@@ -3,7 +3,7 @@ provider "aws" {
 }
 
 resource "aws_instance" "app" {
-  ami           = "ami-0c55b159cbfafe1f0"  # A adapter en fonction des besoins
+  ami           = "ami-052984d1804039ba8"  # A adapter en fonction des besoins
   instance_type = "t2.micro"
   tags = {
     Name = "chatbot-app"
