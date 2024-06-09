@@ -8,13 +8,21 @@ resource "aws_key_pair" "deployer" {
 }
 
 resource "aws_instance" "app" {
-  ami           = "ami-052984d1804039ba8"
+  ami           = "ami-0c55b159cbfafe1f0"
   instance_type = "t2.micro"
+  key_name      = aws_key_pair.deployer.key_name
   tags = {
     Name = "chatbot-app"
   }
 
   provisioner "remote-exec" {
+    connection {
+      type        = "ssh"
+      user        = "ubuntu"
+      private_key = file("~/.ssh/id_rsa")
+      host        = self.public_ip
+    }
+
     inline = [
       "sudo apt update -y",
       "sudo apt install -y docker.io",
