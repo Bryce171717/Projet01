@@ -26,7 +26,7 @@ resource "aws_key_pair" "deployer" {
 }
 
 resource "aws_instance" "app" {
-  ami           = "ami-052984d1804039ba8"
+  ami           = "ami-052984d1804039ba8"  # AMI correcte pour la région eu-west-3
   instance_type = "t2.micro"
   key_name      = aws_key_pair.deployer.key_name
   vpc_security_group_ids = [aws_security_group.ssh.id]
@@ -37,16 +37,17 @@ resource "aws_instance" "app" {
   provisioner "remote-exec" {
     connection {
       type        = "ssh"
-      user        = "brice" # Utilisateur correct pour AWS
+      user        = "ec2-user"
       private_key = file("~/.ssh/id_rsa")
       host        = self.public_ip
     }
 
     inline = [
-      "sudo apt update -y",
-      "sudo apt install -y docker.io",
-      "sudo systemctl start docker",
-      "sudo systemctl enable docker",
+      "sudo yum update -y",
+      "sudo yum install -y docker",
+      "sudo service docker start",
+      "sudo usermod -a -G docker ec2-user",
+      "newgrp docker",
       "sudo docker run -d -p 5000:5000 chatbot-api"
     ]
   }
@@ -54,6 +55,4 @@ resource "aws_instance" "app" {
 
 output "instance_ip" {
   value = aws_instance.app.public_ip
-}
-
 }
