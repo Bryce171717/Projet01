@@ -26,7 +26,7 @@ resource "aws_key_pair" "deployer" {
 }
 
 resource "aws_instance" "app" {
-  ami           = "ami-0c55b159cbfafe1f0"
+  ami           = "ami-052984d1804039ba8"
   instance_type = "t2.micro"
   key_name      = aws_key_pair.deployer.key_name
   vpc_security_group_ids = [aws_security_group.ssh.id]
