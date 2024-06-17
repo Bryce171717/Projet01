@@ -1,7 +1,24 @@
+# Fournisseur AWS
 provider "aws" {
   region = "eu-west-3"
 }
 
+# Variables pour les informations sensibles (à remplacer par vos valeurs)
+variable "mongodb_username" {
+  type        = string
+  description = "Nom d'utilisateur administrateur pour MongoDB"
+  sensitive   = true
+  default     = "admin01"
+}
+
+variable "mongodb_password" {
+  type        = string
+  description = "Mot de passe administrateur pour MongoDB"
+  sensitive   = true
+  default     = "1234"
+}
+
+# Cluster EMR (Apache Spark)
 resource "aws_emr_cluster" "Spark_Cluster" {
   name          = "SparkCluster01"
   release_label = "emr-7.1.0"
@@ -10,13 +27,12 @@ resource "aws_emr_cluster" "Spark_Cluster" {
   log_uri       = "s3://aws-logs-031131961798-eu-west-3/elasticmapreduce"
 
   ec2_attributes {
-    instance_profile                 = "arn:aws:iam::031131961798:instance-profile/EmrEc2S3Full"
-    subnet_id                        = "subnet-00508a1e4ac0faf28"
+    instance_profile              = "arn:aws:iam::031131961798:instance-profile/EmrEc2S3Full"
+    subnet_id                     = "subnet-00508a1e4ac0faf28"
     emr_managed_master_security_group = "sg-01ceb80944ffa01d6"
     emr_managed_slave_security_group  = "sg-0852ccf141b26f385"
-    key_name			      = "SSH_Mongodb"
+    key_name                       = "SSH_Mongodb"
   }
-
 
   master_instance_group {
     instance_type  = "m5.xlarge"
@@ -29,23 +45,18 @@ resource "aws_emr_cluster" "Spark_Cluster" {
     instance_count = 2
     name           = "Unité principale et unité de tâches"
   }
-#Configuration du connecteur mongodb
-configurations_json = jsonencode([
-  {
-    Classification = "spark-defaults",
-    Properties = {
-      "spark.jars.packages" = "org.mongodb.spark:mongo-spark-connector_2.12:3.0.1",
-      "spark.mongodb.input.uri" = "mongodb://[admin01]:[1234]@[mongodb]:27017/[database01]",
-      "spark.mongodb.output.uri" = "mongodb://[admin01]:[1234]@[mongodb]:27017/[database01]"
-    }
-  }
-])
 
-#  task_instance_group {
-#    instance_type  = "m5.xlarge"
-#    instance_count = 1
-#    name           = "Tâche - 1"
-#  }
+  # Configuration du connecteur MongoDB (avec IP privée)
+  configurations_json = jsonencode([
+    {
+      Classification = "spark-defaults",
+      Properties     = {
+        "spark.jars.packages"   = "org.mongodb.spark:mongo-spark-connector_2.12:3.0.1",
+        "spark.mongodb.input.uri"  = "mongodb://${var.mongodb_username}:${var.mongodb_password}@${aws_instance.mongodb.private_ip}:27017/database01",
+        "spark.mongodb.output.uri" = "mongodb://${var.mongodb_username}:${var.mongodb_password}@${aws_instance.mongodb.private_ip}:27017/database01"
+      }
+    }
+  ])
 
   scale_down_behavior = "TERMINATE_AT_TASK_COMPLETION"
   auto_termination_policy {
@@ -53,6 +64,42 @@ configurations_json = jsonencode([
   }
 }
 
+# Instance EC2 MongoDB
+resource "aws_instance" "mongodb" {
+  ami           = "ami-087da76081e7685da"
+  instance_type = "m5.large"
+  key_name      = "SSH_Mongodb"
+
+  # Stockage EBS pour MongoDB
+  root_block_device {
+    volume_size = 50
+  }
+
+  vpc_security_group_ids = ["sg-01ceb80944ffa01d6", "sg-0852ccf141b26f385"]
+
+  # Script d'installation et de configuration de MongoDB
+  user_data = <<-EOF
+    #!/bin/bash
+    sudo apt update
+    sudo apt install -y mongodb-org
+    # Configuration de MongoDB (authentification, etc.)
+    sudo systemctl start mongod
+    sudo systemctl enable mongod
+  EOF
+
+  tags = {
+    Name = "MongoDB Server"
+  }
+}
+
+# Bucket S3 pour stocker les données
+resource "aws_s3_bucket" "data_bucket" {
+  bucket = "S3_datas" 
+
+  # Configuration du cycle de vie des objets, chiffrement, etc.
+}
+
+# Sorties
 output "cluster_id" {
   value = aws_emr_cluster.Spark_Cluster.id
 }
@@ -60,38 +107,15 @@ output "cluster_id" {
 output "master_public_dns" {
   value = aws_emr_cluster.Spark_Cluster.master_public_dns
 }
-# Création d'une instance ec2 contenant mongodb
-resource "aws_instance" "mongodb" {
-  ami           = "ami-087da76081e7685da"
-  instance_type = "t2.micro"
-  key_name      = "SSH_Mongodb"
-
-
-# Même sécurity group que le cluster spark
-  vpc_security_group_ids = ["sg-01ceb80944ffa01d6", "sg-0852ccf141b26f385"]
-
-  user_data = <<-EOF
-              #!/bin/bash
-              sudo apt update
-              sudo apt install -y mongodb
-              sudo systemctl start mongodb
-              sudo systemctl enable mongodb
-              EOF
-
-  tags = {
-    Name = "MongoDB Server"
-  }
-}
-
 
 output "mongodb_instance_status" {
   value = aws_instance.mongodb.instance_state
 }
 
-output "mongodb_public_dns" {
-  value = aws_instance.mongodb.public_dns
+output "mongodb_private_ip" {
+  value = aws_instance.mongodb.private_ip
 }
 
-output "mongodb_public_ip" {
-  value = aws_instance.mongodb.public_ip
+output "data_bucket_arn" {
+  value = aws_s3_bucket.data_bucket.arn
 }
